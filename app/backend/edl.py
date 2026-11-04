@@ -46,10 +46,10 @@ class EditDecisionList:
     def full(cls, duration: float) -> EditDecisionList:
         return cls(duration=max(0.0, duration), kept=[(0.0, max(0.0, duration))])
 
-    def delete(self, start: float, end: float, fps: float | None = None) -> None:
-        if fps and fps > 0:
-            start = math.floor(start * fps + 1e-9) / fps
-            end = math.ceil(end * fps - 1e-9) / fps
+    def delete(self, start: float, end: float, timebase: float | None = None) -> None:
+        if timebase and timebase > 0:
+            start = math.floor(start * timebase + 1e-9) / timebase
+            end = math.ceil(end * timebase - 1e-9) / timebase
         start = max(0.0, min(start, self.duration))
         end = max(0.0, min(end, self.duration))
         if end <= start:
@@ -65,10 +65,24 @@ class EditDecisionList:
                 kept.append((end, right))
         self.kept = normalize_ordered(kept, self.duration)
 
-    def insert(self, intervals: list[Interval], target: float) -> None:
+    def insert(
+        self,
+        intervals: list[Interval],
+        target: float,
+        timebase: float | None = None,
+    ) -> None:
         target = max(0.0, min(float(target), self.duration))
         if not intervals:
             return
+        if timebase and timebase > 0:
+            target = min(math.floor(target * timebase + 0.5) / timebase, self.duration)
+            intervals = [
+                (
+                    math.floor(start * timebase + 1e-9) / timebase,
+                    math.ceil(end * timebase - 1e-9) / timebase,
+                )
+                for start, end in intervals
+            ]
         if not self.kept:
             self.kept = normalize_ordered(intervals, self.duration)
             return

@@ -7,6 +7,7 @@ export type Media = {
   width: number;
   height: number;
   fps: number;
+  sample_rate?: number;
   mime_type: string;
 };
 

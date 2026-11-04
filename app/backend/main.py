@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import mimetypes
 import re
 import shutil
@@ -450,6 +451,14 @@ def _media_sequence(project: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
+def _media_timebase(media: dict[str, Any]) -> float | None:
+    key = "fps" if media.get("has_video") else "sample_rate"
+    value = media.get(key)
+    if isinstance(value, (int, float)) and math.isfinite(value) and value > 0:
+        return float(value)
+    return None
+
+
 @app.get("/api/projects/{project_id}/media-sequence")
 def get_media_sequence(project_id: str) -> list[dict[str, Any]]:
     return _media_sequence(_get_project(project_id))
@@ -484,7 +493,7 @@ def _commit_cut(project: dict[str, Any], start: float, end: float) -> None:
     edl = EditDecisionList.from_dict(project["edl"])
     before = edl.to_dict()
     media = _get_media(project["media_id"])
-    edl.delete(start, end, media["fps"] if media["has_video"] else None)
+    edl.delete(start, end, _media_timebase(media))
     if edl.kept != EditDecisionList.from_dict(before).kept:
         project["undo_stack"].append(before)
         project["redo_stack"] = []
@@ -504,6 +513,7 @@ def paste_project(project_id: str, request: PasteRequest) -> dict[str, Any]:
     project = _get_project(project_id)
     edl = EditDecisionList.from_dict(project["edl"])
     before = edl.to_dict()
+    media = _get_media(project["media_id"])
     intervals = [(item.start, item.end) for item in request.intervals]
     if request.target > edl.duration:
         raise HTTPException(status_code=422, detail="O ponto de inserção está fora da mídia.")
@@ -511,7 +521,7 @@ def paste_project(project_id: str, request: PasteRequest) -> dict[str, Any]:
         if end > edl.duration:
             raise HTTPException(status_code=422, detail="O trecho copiado está fora da mídia.")
     try:
-        edl.insert(intervals, request.target)
+        edl.insert(intervals, request.target, _media_timebase(media))
     except ValueError as reason:
         raise HTTPException(status_code=422, detail=str(reason)) from reason
     if edl.kept != EditDecisionList.from_dict(before).kept:
@@ -533,6 +543,7 @@ def delete_words(project_id: str, payload: dict[str, list[str]]) -> dict[str, An
         raise HTTPException(status_code=404, detail="No matching transcript words")
     edl = EditDecisionList.from_dict(project["edl"])
     before = edl.to_dict()
+    media = _get_media(project["media_id"])
     transcript_indexes = {word["id"]: index for index, word in enumerate(transcript)}
     groups: list[list[dict[str, Any]]] = []
     previous_index = -2
@@ -560,7 +571,7 @@ def delete_words(project_id: str, payload: dict[str, list[str]]) -> dict[str, An
                 status_code=422,
                 detail="Os tempos desta palavra se sobrepõem aos das palavras vizinhas. O corte foi interrompido para preservá-las.",
             )
-        edl.delete(start, end)
+        edl.delete(start, end, _media_timebase(media))
     if edl.kept != EditDecisionList.from_dict(before).kept:
         project["undo_stack"].append(before)
         project["redo_stack"] = []

@@ -35,6 +35,7 @@ def probe(path: Path) -> dict[str, Any]:
         "width": int(video.get("width", 0)) if video else 0,
         "height": int(video.get("height", 0)) if video else 0,
         "fps": fps,
+        "sample_rate": int(audio.get("sample_rate", 0)) if audio else 0,
         "audio_codec": audio.get("codec_name", "") if audio else "",
         "mime_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
     }

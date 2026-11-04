@@ -84,13 +84,24 @@ def test_remote_transcription_offsets_chunks(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(
         transcription,
         "_provider_request",
-        lambda _provider, _key, _path: {"language": "pt", "words": [{"word": "oi", "start": 0.1, "end": 0.3}]},
+        lambda _provider, _key, _path, *_args: {
+            "results": {
+                "channels": [{
+                    "detected_language": "pt-BR",
+                    "alternatives": [{
+                        "words": [
+                            {"word": "oi", "punctuated_word": "oi", "start": 0.1, "end": 0.3},
+                        ],
+                    }],
+                }],
+            },
+        },
     )
     progress: list[tuple[float, str]] = []
     words, language = transcription.transcribe_remote(
         tmp_path / "media.mp4",
         601,
-        "groq",
+        "deepgram",
         "test-key",
         lambda value, message: progress.append((value, message)),
         lambda: False,
@@ -99,7 +110,7 @@ def test_remote_transcription_offsets_chunks(monkeypatch, tmp_path: Path) -> Non
         ("oi", 0.1, 0.3),
         ("oi", 600.1, 600.3),
     ]
-    assert language == "pt"
+    assert language == "pt-BR"
     assert progress[-1][0] == 0.9
 
 
@@ -128,7 +139,7 @@ def test_remote_key_is_required_and_not_saved_in_project(monkeypatch, tmp_path: 
 
     missing_key = client.post(
         f"/api/projects/{project_id}/transcribe",
-        json={"provider": "groq"},
+        json={"provider": "deepgram"},
     )
     assert missing_key.status_code == 422
 
@@ -146,7 +157,7 @@ def test_remote_key_is_required_and_not_saved_in_project(monkeypatch, tmp_path: 
     monkeypatch.setattr(main, "_start_job", start_job_stub)
     response = client.post(
         f"/api/projects/{project_id}/transcribe",
-        json={"provider": "groq", "api_key": secret},
+        json={"provider": "deepgram", "api_key": secret},
     )
     assert response.status_code == 200
     assert secret not in project_path.read_text(encoding="utf-8")

@@ -69,13 +69,33 @@ def test_import_edit_undo_export_and_reload(tmp_path: Path, monkeypatch) -> None
         ]},
     ).status_code == 422
 
+    project_path = data_dir / "projects" / f"{project_id}.json"
+    saved_project = json.loads(project_path.read_text(encoding="utf-8"))
+    saved_project["transcript"] = [
+        {"id": "word-to-cut", "text": "palavra", "start": 1.001, "end": 2.001, "speaker": "Speaker 1"},
+    ]
+    project_path.write_text(json.dumps(saved_project), encoding="utf-8")
+    word_cut = client.post(
+        f"/api/projects/{project_id}/delete-words",
+        json={"word_ids": ["word-to-cut"]},
+    ).json()
+    assert word_cut["edl"]["kept"] == [
+        {"start": 0.0, "end": 1.0},
+        {"start": 2.04, "end": 4.0},
+    ]
+    assert client.post(f"/api/projects/{project_id}/undo").json()["edl"]["edited_duration"] == 4
+
     edited = client.post(
         f"/api/projects/{project_id}/cuts",
-        json={"start": 1, "end": 2},
+        json={"start": 1.001, "end": 2.001},
     ).json()
-    assert abs(edited["edl"]["edited_duration"] - 3) < 0.05
+    assert edited["edl"]["kept"] == [
+        {"start": 0.0, "end": 1.0},
+        {"start": 2.04, "end": 4.0},
+    ]
+    assert abs(edited["edl"]["edited_duration"] - 2.96) < 1e-9
     assert client.post(f"/api/projects/{project_id}/undo").json()["edl"]["edited_duration"] == 4
-    assert abs(client.post(f"/api/projects/{project_id}/redo").json()["edl"]["edited_duration"] - 3) < 0.05
+    assert abs(client.post(f"/api/projects/{project_id}/redo").json()["edl"]["edited_duration"] - 2.96) < 1e-9
 
     job = client.post(f"/api/projects/{project_id}/export", json={"format": "mp4"}).json()
     for _ in range(120):
@@ -87,17 +107,21 @@ def test_import_edit_undo_export_and_reload(tmp_path: Path, monkeypatch) -> None
     output = data_dir / "projects" / project_id / "exports" / status["result"]["filename"]
     probe_result = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "ffprobe", "-v", "error", "-count_frames", "-show_entries",
+            "stream=codec_type,nb_read_frames:format=duration",
             "-of", "json", str(output),
         ],
         check=True,
         capture_output=True,
         text=True,
     )
-    duration = float(json.loads(probe_result.stdout)["format"]["duration"])
-    assert abs(duration - 3) < 0.1
+    rendered = json.loads(probe_result.stdout)
+    duration = float(rendered["format"]["duration"])
+    video_stream = next(stream for stream in rendered["streams"] if stream["codec_type"] == "video")
+    assert abs(duration - 2.96) < 0.02
+    assert int(video_stream["nb_read_frames"]) == 74
     reloaded = client.get(f"/api/projects/{project_id}").json()
-    assert reloaded["edl"]["edited_duration"] == 3
+    assert reloaded["edl"]["edited_duration"] == 2.96
 
     renamed = client.patch(
         f"/api/projects/{project_id}",
@@ -111,3 +135,73 @@ def test_import_edit_undo_export_and_reload(tmp_path: Path, monkeypatch) -> None
     assert deleted.status_code == 200
     assert client.get(f"/api/projects/{project_id}").status_code == 404
     assert client.get(f"/api/media/{media['id']}").status_code == 200
+
+
+def test_audio_cut_exports_exact_sample_count(tmp_path: Path, monkeypatch) -> None:
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(main, "DATA_DIR", data_dir)
+    monkeypatch.setattr(main, "MEDIA_DIR", data_dir / "media")
+    monkeypatch.setattr(main, "PROJECT_DIR", data_dir / "projects")
+    monkeypatch.setattr(main, "MEDIA_INDEX", data_dir / "media.json")
+    main.MEDIA_DIR.mkdir(parents=True)
+    main.PROJECT_DIR.mkdir(parents=True)
+
+    sample_rate = 48_000
+    source = tmp_path / "sample.wav"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+            f"sine=frequency=440:sample_rate={sample_rate}:duration=2",
+            "-c:a", "pcm_s16le", str(source),
+        ],
+        check=True,
+    )
+    client = TestClient(main.app)
+    with source.open("rb") as media_file:
+        media_response = client.post(
+            "/api/media/import",
+            files={"file": ("sample.wav", media_file, "audio/wav")},
+        )
+    assert media_response.status_code == 200
+    project = client.post(
+        "/api/projects",
+        json={"media_id": media_response.json()["id"]},
+    ).json()
+
+    cut_start = 24_000.2 / sample_rate
+    cut_end = 36_000.8 / sample_rate
+    cut = client.post(
+        f"/api/projects/{project['id']}/cuts",
+        json={"start": cut_start, "end": cut_end},
+    )
+    assert cut.status_code == 200
+    assert cut.json()["edl"]["kept"] == [
+        {"start": 0.0, "end": 0.5},
+        {"start": 36_001 / sample_rate, "end": 2.0},
+    ]
+
+    job = client.post(
+        f"/api/projects/{project['id']}/export",
+        json={"format": "wav"},
+    ).json()
+    for _ in range(120):
+        status = client.get(f"/api/jobs/{job['id']}").json()
+        if status["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.25)
+    assert status["status"] == "completed", status
+
+    output = (
+        data_dir / "projects" / project["id"] / "exports"
+        / status["result"]["filename"]
+    )
+    decoded = subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-i", str(output), "-f", "s16le",
+            "-acodec", "pcm_s16le", "pipe:1",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    expected_samples = 2 * sample_rate - (36_001 - 24_000)
+    assert len(decoded.stdout) // 2 == expected_samples
