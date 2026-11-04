@@ -1,0 +1,16 @@
+[package]
+name = "studio-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.9.2" }
+gtk = { package = "gtk4", version = "0.11.5", features = ["v4_10"] }
+gio = "0.22"
+studio-core = { path = "../studio-core" }
+studio-import = { path = "../studio-import" }
+studio-jobs = { path = "../studio-jobs" }
+studio-store = { path = "../studio-store" }
+uuid.workspace = true

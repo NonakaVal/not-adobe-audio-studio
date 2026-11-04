@@ -1,0 +1,94 @@
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# Segredos e configuracao local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Ambientes e caches Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Resultados temporarios de testes e cobertura
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+test-results/
+playwright-report/
+junit.xml
+
+# Dados locais, midia, modelos e saidas geradas
+app/backend/data/
+models/
+*.tmp
+*.temp
+*.part
+*.log
+
+# Frontend
+app/frontend/node_modules/
+app/frontend/dist/
+app/frontend/coverage/
+app/frontend/tsconfig.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Rust
+/target/
+**/target/
+*.rs.bk
+
+# Pesquisa local e arquivos de planejamento
+/reference/
+investigation.cany/
+planning/
+plans/
+plan/
+.tmp/
+.cache/
+Plano*.md
+plano*.md
+PLAN*.md
+plan.md
+PLAN.md
+craft.json
+feed.json
+usage.json
+transcription-based-audio-and-video-editor.json
+build-activity.log
+
+# Configuracao local de agentes e assistentes
+.agents/
+.claude/
+.codex/
+.cursor/
+.copilot/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+COPILOT.md
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.github/agents/

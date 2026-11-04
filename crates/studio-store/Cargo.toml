@@ -1,0 +1,17 @@
+[package]
+name = "studio-store"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rusqlite = "0.41.1"
+serde.workspace = true
+serde_json.workspace = true
+studio-core = { path = "../studio-core" }
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
